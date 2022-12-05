@@ -190,7 +190,7 @@ HOOK (void *, __fastcall, PlayVoice, 0x14047c9d0, void *a1, string *name, void *
 	return originalPlayVoice (a1, name, a3);
 }
 
-HOOK (void *, __fastcall, PlaySurroundVoice, 0x14047cba0, void *a1, string *name, void *a3, void *a4, u32 *a5, u32 *a6) {
+HOOK (void *, __fastcall, PlaySurroundVoice, 0x14047cba0, void *a1, string *name, void *a3, void *a4, i32 a5, u32 a6) {
 	show_subtitle (name);
 	return originalPlaySurroundVoice (a1, name, a3, a4, a5, a6);
 }
