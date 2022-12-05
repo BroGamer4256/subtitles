@@ -1,5 +1,15 @@
 ## This tool for making subtitles is *very* jank
 
+### Building
+This project is built with rust which can be installed from <https://rustup.rs/>
+
+This makes use of egui through bevy_egui and as such needs some dependencies installed on linux systems, however not for windows or macos
+
+On debian based systems these can be installed with 
+```
+sudo apt install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+```
+
 ### Usage
 1. Extract SOUND/PC/TIKYUU5_VOICE_LIST.LANG.AWE (or equivalent file)
 2. Convert all hca files to wavs (See #Converting)
