@@ -112,8 +112,8 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 
 		RECT windowRect;
 		GetWindowRect (windowHandle, &windowRect);
-		f32 width   = windowRect.right - windowRect.left; // Left
-		f32 height  = windowRect.bottom - windowRect.top; // Bottom
+		f32 width   = windowRect.right - windowRect.left;
+		f32 height  = windowRect.bottom - windowRect.top;
 		imguiWidth  = width / 3;
 		imguiHeight = font_size * 5;
 		imguiPosX   = width / 2;
