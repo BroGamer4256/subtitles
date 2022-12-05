@@ -31,7 +31,7 @@ fn load_files(
 ) {
 	let mut files = vec![];
 	for file in std::fs::read_dir(
-		"/G/SteamLibrary/steamapps/common/EARTH DEFENSE FORCE 5/SOUND/PC/TIKYUU5_VOICE_LIST.EN/batch 9",
+		"/Path/To/Batch",
 	)
 	.unwrap()
 	{

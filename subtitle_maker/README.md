@@ -10,6 +10,9 @@
 7. Save the results from progress.csv into the larger subtitles.csv file
 8. Repeat with all batches until all audio files are subtitled
 
+### Limitations
+No subtitles can have commas in them due to the way they're stored.
+
 ### Building
 This project is built with rust which can be installed from <https://rustup.rs/>
 
