@@ -1,0 +1,18 @@
+[package]
+name = "subtitle_maker"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = { version = "0.9.1", features = ["wav"] }
+bevy_egui = "0.17.1"
+chrono = "0.4.23"
+hound = "3.5.0"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
