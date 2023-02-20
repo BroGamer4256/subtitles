@@ -1,13 +1,23 @@
 #![feature(let_chains)]
 use bevy::prelude::*;
 use bevy_egui::*;
-use std::cmp::Ordering::*;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
+
+const BATCH_PATH: &'static str = "/G/SteamLibrary/steamapps/common/EARTH DEFENSE FORCE 5/SOUND/PC/TIKYUU5_VOICE_LIST.EN/batch 72";
+const WHISPER_MODEL: &'static str = "small.en";
+const WHISPER_LANGUAGE: &'static str = "en";
 
 fn main() {
 	App::new()
-		.add_plugins(DefaultPlugins)
+		.add_plugins(DefaultPlugins.set(WindowPlugin {
+			window: WindowDescriptor {
+				title: String::from("Subtitle maker"),
+				..default()
+			},
+			..default()
+		}))
 		.add_plugin(EguiPlugin)
 		.insert_resource(Files {
 			files: vec![],
@@ -30,34 +40,25 @@ fn load_files(
 	asset_server: ResMut<AssetServer>,
 ) {
 	let mut files = vec![];
-	for file in std::fs::read_dir(
-		"/Path/To/Batch",
-	)
-	.unwrap()
-	{
+	for file in std::fs::read_dir(BATCH_PATH).unwrap() {
 		let path = file.unwrap().path();
 		let handle = asset_server.load(path.clone());
+		let name = path.file_name().unwrap().to_string_lossy();
+		let name = name.strip_suffix(".hca.wav").unwrap();
+		if name.chars().nth(name.len() - 2) == Some('_') {
+			continue;
+		}
 		files.push(File {
 			path,
 			handle,
+			initial_subtitle: None,
 		});
 	}
+	generate_subtitle_ai(&mut files);
 	files.sort_by(|a, b| {
-		let a = a.path.file_name().unwrap().to_string_lossy();
-		let a = a.strip_suffix(".hca.wav").unwrap();
-		let b = b.path.file_name().unwrap().to_string_lossy();
-		let b = b.strip_suffix(".hca.wav").unwrap();
-		let a_e = a.ends_with("_E");
-		let b_e = b.ends_with("_E");
-		if a_e && b_e {
-			a.cmp(b)
-		} else if a_e && !b_e {
-			Greater
-		} else if !a_e && b_e {
-			Less
-		} else {
-			a.cmp(b)
-		}
+		let a = a.path.file_name().unwrap();
+		let b = b.path.file_name().unwrap();
+		a.cmp(b)
 	});
 	files.reverse();
 
@@ -77,6 +78,7 @@ struct Complete {
 struct File {
 	handle: Handle<AudioSource>,
 	path: PathBuf,
+	initial_subtitle: Option<String>,
 }
 
 #[derive(Resource)]
@@ -98,15 +100,67 @@ struct DataCollection {
 }
 
 fn generate_csv(data_collection: &Vec<Data>) {
-	let mut out = String::new();
-	for data in data_collection {
-		out.push_str(&format!(
-			"{},{},{}\n",
-			data.duration, data.name, data.subtitle
-		));
+	let Some(data) = data_collection.last() else {
+		return
+	};
+	let out = format!("{};{};{}\n", data.duration, data.name, data.subtitle);
+	let mut file = std::fs::File::options()
+		.append(true)
+		.create(true)
+		.open("subtitles.csv")
+		.unwrap();
+	file.write(out.as_bytes()).unwrap();
+}
+
+fn generate_subtitle_ai(files: &mut Vec<File>) {
+	let tmp_path = std::path::Path::new("tmp");
+	if !tmp_path.exists() {
+		std::fs::create_dir("tmp").unwrap();
 	}
-	let mut file = std::fs::File::create("progress.csv").unwrap();
-	file.write_all(out.as_bytes()).unwrap();
+	let mut whisper_cmd = Command::new("gamemoderun");
+	whisper_cmd
+		.arg("whisper")
+		.arg("--model")
+		.arg(WHISPER_MODEL)
+		.arg("--language")
+		.arg(WHISPER_LANGUAGE)
+		.arg("--verbose")
+		.arg("False")
+		.arg("--output_format")
+		.arg("txt")
+		.arg("--output_dir")
+		.arg(tmp_path);
+
+	for file in files.iter() {
+		whisper_cmd.arg(file.path.clone());
+	}
+	whisper_cmd.spawn().unwrap().wait().unwrap();
+
+	for file in files {
+		let path = format!(
+			"tmp/{}.txt",
+			file.path.file_name().unwrap().to_string_lossy()
+		);
+		let Ok(initial_subtitle) = std::fs::read_to_string(path) else {
+			continue;
+		};
+		file.initial_subtitle = Some(
+			initial_subtitle
+				.replace('\n', " ")
+				.trim_end()
+				.chars()
+				.enumerate()
+				.map(|(i, c)| {
+					if i == 0 {
+						c.to_uppercase().next().unwrap()
+					} else {
+						c
+					}
+				})
+				.collect(),
+		);
+	}
+	std::fs::remove_dir_all(tmp_path).unwrap();
 }
 
 fn ui(
@@ -125,9 +179,7 @@ fn ui(
 			complete.completed += 1;
 			generate_csv(&data_collection.data);
 			files.cur_file = files.files.pop();
-			let cur_file = if let Some(file) = &files.cur_file {
-				file
-			} else {
+			let Some(cur_file) = &files.cur_file else {
 				complete.complete = true;
 				return;
 			};
@@ -141,12 +193,7 @@ fn ui(
 			let duration = wav.duration() * 1000 / wav.spec().sample_rate;
 			let name = cur_file.path.file_name().unwrap().to_string_lossy();
 			let name = name.strip_suffix(".hca.wav").unwrap();
-			let mut subtitle = String::new();
-			if name.ends_with("_E") &&  let Some(data) = data_collection.data.iter()
-					.find(|data| data.name == name.strip_suffix("_E").unwrap())
-				{
-					subtitle = data.subtitle.clone();
-				}
+			let subtitle = cur_file.initial_subtitle.clone().unwrap_or_default();
 
 			data_collection.data.push(Data {
 				duration,

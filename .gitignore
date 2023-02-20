@@ -1,7 +1,7 @@
-.vscode
-.cache
+/.vscode
+/.cache
+/x86_64-pc-windows-gnu
 *.o
 *.dll
-x86_64-pc-windows-gnu
 compile_commands.json
 *.7z

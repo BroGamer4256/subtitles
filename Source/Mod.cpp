@@ -7,9 +7,7 @@
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
-#include <string>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
 typedef struct string {
@@ -28,13 +26,12 @@ getStringInternal (string *str) {
 }
 
 typedef struct subtitle {
-	std::chrono::milliseconds duration;
-	std::string subtitle;
-	std::string name;
+	int duration;
+	char *subtitle;
+	char *name;
 } subtitle;
 
-// Doesn't work with char *, wtf?
-std::unordered_map<std::string, subtitle> subtitles;
+extern "C" subtitle get_subtitle (char *);
 
 typedef enum subtitle_state {
 	fade_in,
@@ -48,19 +45,25 @@ typedef struct showing_subtitle {
 	subtitle subtitle;
 } showing_subtitle;
 
-std::unordered_map<std::string, showing_subtitle> showing_subtitles;
+std::vector<showing_subtitle> showing_subtitles;
+
+bool
+operator== (showing_subtitle lhs, subtitle const rhs) {
+	return strcmp (lhs.subtitle.name, rhs.name) == 0;
+}
 
 void
 wait_remove_sub (subtitle sub) {
-	std::this_thread::sleep_for (sub.duration);
-	showing_subtitles[sub.name].state = fade_out;
+	std::this_thread::sleep_for (std::chrono::milliseconds (sub.duration));
+	auto it = std::find (showing_subtitles.begin (), showing_subtitles.end (), sub);
+	if (it != showing_subtitles.end ()) it->state = fade_out;
 }
 
 void
 show_subtitle (string *name) {
-	subtitle sub = subtitles[getStringInternal (name)];
-	if (sub.subtitle.empty ()) { return; }
-	showing_subtitles[sub.name] = showing_subtitle{ fade_in, 0.0, sub };
+	subtitle sub = get_subtitle (getStringInternal (name));
+	if (!strcmp (sub.subtitle, "")) { return; }
+	showing_subtitles.push_back (showing_subtitle{ fade_in, 0.0, sub });
 	std::thread thread (wait_remove_sub, sub);
 	thread.detach ();
 }
@@ -100,8 +103,11 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 		HWND windowHandle = sd.OutputWindow;
 		originalWndProc   = (WNDPROC)SetWindowLongPtrA (windowHandle, GWLP_WNDPROC, (i64)WndProc);
 
-		auto config   = toml::parse ("Mods/Plugins/subtitles.toml");
-		f32 font_size = toml::find_or<f32> (config, "font_size", 17.0);
+		f32 font_size = 17.0;
+		try {
+			auto config = toml::parse ("Mods/Plugins/subtitles.toml");
+			font_size   = toml::find_or<f32> (config, "font_size", 17.0);
+		} catch (...) {}
 
 		ImGui::CreateContext ();
 		ImGuiIO &io    = ImGui::GetIO ();
@@ -114,7 +120,7 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 		GetWindowRect (windowHandle, &windowRect);
 		f32 width   = windowRect.right - windowRect.left;
 		f32 height  = windowRect.bottom - windowRect.top;
-		imguiWidth  = width / 3;
+		imguiWidth  = width / 2.5;
 		imguiHeight = font_size * 5;
 		imguiPosX   = width / 2;
 		imguiPosY   = height / 1.25;
@@ -128,20 +134,24 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 
 	ImGui::SetNextWindowSize (ImVec2 (imguiWidth, imguiHeight), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos (ImVec2 (imguiPosX, imguiPosY), ImGuiCond_FirstUseEver, ImVec2 (0.5, 0.5));
+	ImGui::SetNextWindowBgAlpha (0.7);
 	if (ImGui::Begin ("Subtitles", 0, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse)) {
 		ImGui::PushTextWrapPos (0.0);
-		for (auto &kv : showing_subtitles) {
-			switch (kv.second.state) {
+		for (auto &sub : showing_subtitles) {
+			switch (sub.state) {
 			case fade_in:
-				ImGui::TextColored (ImVec4 (1.0, 1.0, 1.0, kv.second.opacity), "%s\n", kv.second.subtitle.subtitle.c_str ());
-				kv.second.opacity += 0.1;
-				if (kv.second.opacity >= 1.0) { kv.second.state = show; }
+				ImGui::TextColored (ImVec4 (1.0, 1.0, 1.0, sub.opacity), "%s\n", sub.subtitle.subtitle);
+				sub.opacity += 0.1;
+				if (sub.opacity >= 1.0) { sub.state = show; }
 				break;
-			case show: ImGui::TextWrapped ("%s\n", kv.second.subtitle.subtitle.c_str ()); break;
+			case show: ImGui::TextWrapped ("%s\n", sub.subtitle.subtitle); break;
 			case fade_out:
-				ImGui::TextColored (ImVec4 (1.0, 1.0, 1.0, kv.second.opacity), "%s\n", kv.second.subtitle.subtitle.c_str ());
-				kv.second.opacity -= 0.1;
-				if (kv.second.opacity <= 0.0) { showing_subtitles.erase (kv.first); }
+				ImGui::TextColored (ImVec4 (1.0, 1.0, 1.0, sub.opacity), "%s\n", sub.subtitle.subtitle);
+				sub.opacity -= 0.1;
+				if (sub.opacity <= 0.0) {
+					auto it = std::find (showing_subtitles.begin (), showing_subtitles.end (), sub.subtitle);
+					if (it != showing_subtitles.end ()) showing_subtitles.erase (it);
+				}
 				break;
 			}
 		}
@@ -201,19 +211,9 @@ __declspec(dllexport) bool __fastcall EML5_Load (PluginInfo *info) {
 	INSTALL_HOOK (PlayVoice);
 	INSTALL_HOOK (PlaySurroundVoice);
 
-	FILE *file   = fopen ("Mods/Plugins/subtitles.csv", "r");
-	i32 buf_size = 255;
-	char buffer[buf_size];
-	while (fgets (buffer, buf_size, file)) {
-		buffer[strcspn (buffer, "\n")] = 0;
-		char *time                     = strtok (buffer, ",");
-		std::chrono::milliseconds ms   = std::chrono::milliseconds (atoi (time));
-
-		char *internal_name      = strtok (0, ",");
-		char *subtitle_s         = strtok (0, ",");
-		subtitles[internal_name] = subtitle{ ms, subtitle_s, internal_name };
-	}
-	fclose (file);
+	// debug stuff
+	// AllocConsole ();
+	// freopen ("CONOUT$", "w", stdout);
 
 	info->infoVersion = PluginInfo::MaxInfoVer;
 	info->name        = "Subtitles";

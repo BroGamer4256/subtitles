@@ -7,7 +7,8 @@ OBJ = $(addprefix $(TARGET)/,$(SRC:.cpp=.o))
 INCLUDE = -ISource -IDependencies/Detours/src -IDependencies/imgui -IDependencies/imgui/backends -IDependencies/toml11
 DEFINES = -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x501
 CXXFLAGS = -Wall -Wextra -Ofast
-LDFLAGS = -shared -static -s -pthread -lpsapi -lgdi32 -ldwmapi -ld3dcompiler
+LDFLAGS = -shared -static -s -pthread -lpsapi -lgdi32 -ldwmapi -ld3dcompiler -lkernel32 -ladvapi32 -luserenv -lkernel32 -lkernel32 -lws2_32 -lbcrypt
+HASHMAP_LIB = hashmap/target/$(TARGET)/release/libhashmap.a
 
 all: options $(OUT)
 
@@ -24,13 +25,17 @@ dirs:
 	@mkdir -p $(TARGET)/Dependencies/imgui/backends
 
 $(TARGET)/%.o: %.cpp
-	@echo "BUILD	$@"
+	@echo "BUILD	$<"
 	@bear -- $(CXX) -c $(CXXFLAGS) $(DEFINES) $(INCLUDE) $< -o $@
 
+$(HASHMAP_LIB): subtitle_maker/subtitles.csv
+	@echo "BUILD	hashmap"
+	@cd hashmap && cargo build --release --target $(TARGET) --quiet
+
 .PHONY: $(OUT)
-$(OUT): dirs $(OBJ)
+$(OUT): dirs $(OBJ) $(HASHMAP_LIB)
 	@echo "LINK	$@"
-	@$(CXX) $(CXXFLAGS) $(DEFINES) $(INCLUDE) -o $(TARGET)/$@.dll $(OBJ) $(LDFLAGS) $(LIBS)
+	@$(CXX) $(CXXFLAGS) $(DEFINES) $(INCLUDE) -o $(TARGET)/$@.dll $(OBJ) $(LDFLAGS) $(HASHMAP_LIB)
 
 .PHONY: dist
 dist: $(OUT)
