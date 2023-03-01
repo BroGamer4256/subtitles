@@ -87,9 +87,8 @@ f32 imguiPosX;
 f32 imguiPosY;
 bool resChanged = false;
 
-VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeBuffers, u32 BufferCount, u32 Width, u32 Height, DXGI_FORMAT NewFormat, u32 SwapChainFlags) {
-	HRESULT res = originalIDXGISwapChainResizeBuffers (This, BufferCount, Width, Height, NewFormat, SwapChainFlags);
-
+void
+resize (IDXGISwapChain *This) {
 	DXGI_SWAP_CHAIN_DESC sd;
 	ID3D11Texture2D *pBackBuffer;
 	ID3D11Device *pDevice;
@@ -113,37 +112,17 @@ VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeBuffers, u32 BufferCount,
 	imguiPosX   = width / 2;
 	imguiPosY   = height / 1.25;
 	resChanged  = true;
+}
 
+VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeBuffers, u32 BufferCount, u32 Width, u32 Height, DXGI_FORMAT NewFormat, u32 SwapChainFlags) {
+	HRESULT res = originalIDXGISwapChainResizeBuffers (This, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+	resize (This);
 	return res;
 }
 
 VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeTarget, void *params) {
 	HRESULT res = originalIDXGISwapChainResizeTarget (This, params);
-
-	DXGI_SWAP_CHAIN_DESC sd;
-	ID3D11Texture2D *pBackBuffer;
-	ID3D11Device *pDevice;
-
-	This->GetDevice (__uuidof (ID3D11Device), (void **)&pDevice);
-	pDevice->GetImmediateContext (&pContext);
-
-	This->GetBuffer (0, __uuidof (ID3D11Texture2D), (void **)&pBackBuffer);
-	pDevice->CreateRenderTargetView (pBackBuffer, 0, &mainRenderTargetView);
-	pBackBuffer->Release ();
-
-	This->GetDesc (&sd);
-	HWND windowHandle = sd.OutputWindow;
-
-	RECT windowRect;
-	GetWindowRect (windowHandle, &windowRect);
-	f32 width   = windowRect.right - windowRect.left;
-	f32 height  = windowRect.bottom - windowRect.top;
-	imguiWidth  = width / 2.5;
-	imguiHeight = font_size * 5;
-	imguiPosX   = width / 2;
-	imguiPosY   = height / 1.25;
-	resChanged  = true;
-
+	resize (This);
 	return res;
 }
 
