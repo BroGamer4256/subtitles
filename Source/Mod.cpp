@@ -77,10 +77,26 @@ WndProc (const HWND window, u32 message, u64 wParam, i64 lParam) {
 	return CallWindowProc (originalWndProc, window, message, wParam, lParam);
 }
 
-VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
-	static ID3D11DeviceContext *pContext;
-	static ID3D11RenderTargetView *mainRenderTargetView;
+ID3D11DeviceContext *pContext;
+ID3D11RenderTargetView *mainRenderTargetView;
 
+VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeBuffers, u32 bufferCount, u32 width, u32 height, DXGI_FORMAT format, u32 flags) {
+	HRESULT res = originalIDXGISwapChainResizeBuffers (This, bufferCount, width, height, format, flags);
+
+	ID3D11Texture2D *pBackBuffer;
+	ID3D11Device *pDevice;
+
+	This->GetDevice (__uuidof (ID3D11Device), (void **)&pDevice);
+	pDevice->GetImmediateContext (&pContext);
+
+	This->GetBuffer (0, __uuidof (ID3D11Texture2D), (void **)&pBackBuffer);
+	pDevice->CreateRenderTargetView (pBackBuffer, 0, &mainRenderTargetView);
+	pBackBuffer->Release ();
+
+	return res;
+}
+
+VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 	static f32 imguiWidth;
 	static f32 imguiHeight;
 	static f32 imguiPosX;
@@ -92,10 +108,10 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 		ID3D11Texture2D *pBackBuffer;
 		ID3D11Device *pDevice;
 
-		This->GetDevice (__uuidof(ID3D11Device), (void **)&pDevice);
+		This->GetDevice (__uuidof (ID3D11Device), (void **)&pDevice);
 		pDevice->GetImmediateContext (&pContext);
 
-		This->GetBuffer (0, __uuidof(ID3D11Texture2D), (void **)&pBackBuffer);
+		This->GetBuffer (0, __uuidof (ID3D11Texture2D), (void **)&pBackBuffer);
 		pDevice->CreateRenderTargetView (pBackBuffer, 0, &mainRenderTargetView);
 		pBackBuffer->Release ();
 
@@ -171,7 +187,10 @@ VTABLE_HOOK (i32, __stdcall, IDXGIFactory2, CreateSwapChain, IUnknown *pDevice, 
 	i32 result = originalIDXGIFactory2CreateSwapChain (This, pDevice, pDesc, ppSwapChain);
 	if (FAILED (result)) return result;
 
-	if (ppSwapChain && *ppSwapChain) INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, Present, 8);
+	if (ppSwapChain && *ppSwapChain) {
+		INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, Present, 8);
+		INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, ResizeBuffers, 13);
+	}
 
 	return result;
 }
@@ -187,9 +206,9 @@ HOOK (i32, __stdcall, D3D11CreateDevice, PROC_ADDRESS ("d3d11.dll", "D3D11Create
 	IDXGIDevice2 *pDXGIDevice;
 	IDXGIAdapter *pDXGIAdapter;
 	IDXGIFactory2 *pIDXGIFactory;
-	pDevice->QueryInterface (__uuidof(IDXGIDevice2), (void **)&pDXGIDevice);
-	pDXGIDevice->GetParent (__uuidof(IDXGIAdapter), (void **)&pDXGIAdapter);
-	pDXGIAdapter->GetParent (__uuidof(IDXGIFactory2), (void **)&pIDXGIFactory);
+	pDevice->QueryInterface (__uuidof (IDXGIDevice2), (void **)&pDXGIDevice);
+	pDXGIDevice->GetParent (__uuidof (IDXGIAdapter), (void **)&pDXGIAdapter);
+	pDXGIAdapter->GetParent (__uuidof (IDXGIFactory2), (void **)&pIDXGIFactory);
 	INSTALL_VTABLE_HOOK (IDXGIFactory2, pIDXGIFactory, CreateSwapChain, 10);
 
 	return result;
@@ -206,7 +225,7 @@ HOOK (void *, __fastcall, PlaySurroundVoice, 0x14047cba0, void *a1, string *name
 }
 
 extern "C" {
-__declspec(dllexport) bool __fastcall EML5_Load (PluginInfo *info) {
+__declspec (dllexport) bool __fastcall EML5_Load (PluginInfo *info) {
 	INSTALL_HOOK (D3D11CreateDevice);
 	INSTALL_HOOK (PlayVoice);
 	INSTALL_HOOK (PlaySurroundVoice);

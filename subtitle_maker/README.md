@@ -4,7 +4,7 @@
 
 1. Extract SOUND/PC/TIKYUU5_VOICE_LIST.LANG.AWE (or equivalent file)
 2. Convert all hca files to wavs (See #Converting HCAs to batches)
-3. Move into batches (I did batches of 100 but anywhere up to 500 is probably fine)
+3. Move into batches to make for easy stopping/starting points
 4. Install <https://github.com/openai/whisper>
 5. Change the batch path and whisper options in src/main.rs
 6. Compile and run the application (See #Building)
