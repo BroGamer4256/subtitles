@@ -80,9 +80,17 @@ WndProc (const HWND window, u32 message, u64 wParam, i64 lParam) {
 ID3D11DeviceContext *pContext;
 ID3D11RenderTargetView *mainRenderTargetView;
 
-VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeBuffers, u32 bufferCount, u32 width, u32 height, DXGI_FORMAT format, u32 flags) {
-	HRESULT res = originalIDXGISwapChainResizeBuffers (This, bufferCount, width, height, format, flags);
+f32 font_size;
+f32 imguiWidth;
+f32 imguiHeight;
+f32 imguiPosX;
+f32 imguiPosY;
+bool resChanged = false;
 
+VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeBuffers, u32 BufferCount, u32 Width, u32 Height, DXGI_FORMAT NewFormat, u32 SwapChainFlags) {
+	HRESULT res = originalIDXGISwapChainResizeBuffers (This, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+
+	DXGI_SWAP_CHAIN_DESC sd;
 	ID3D11Texture2D *pBackBuffer;
 	ID3D11Device *pDevice;
 
@@ -93,15 +101,53 @@ VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeBuffers, u32 bufferCount,
 	pDevice->CreateRenderTargetView (pBackBuffer, 0, &mainRenderTargetView);
 	pBackBuffer->Release ();
 
+	This->GetDesc (&sd);
+	HWND windowHandle = sd.OutputWindow;
+
+	RECT windowRect;
+	GetWindowRect (windowHandle, &windowRect);
+	f32 width   = windowRect.right - windowRect.left;
+	f32 height  = windowRect.bottom - windowRect.top;
+	imguiWidth  = width / 2.5;
+	imguiHeight = font_size * 5;
+	imguiPosX   = width / 2;
+	imguiPosY   = height / 1.25;
+	resChanged  = true;
+
+	return res;
+}
+
+VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeTarget, void *params) {
+	HRESULT res = originalIDXGISwapChainResizeTarget (This, params);
+
+	DXGI_SWAP_CHAIN_DESC sd;
+	ID3D11Texture2D *pBackBuffer;
+	ID3D11Device *pDevice;
+
+	This->GetDevice (__uuidof (ID3D11Device), (void **)&pDevice);
+	pDevice->GetImmediateContext (&pContext);
+
+	This->GetBuffer (0, __uuidof (ID3D11Texture2D), (void **)&pBackBuffer);
+	pDevice->CreateRenderTargetView (pBackBuffer, 0, &mainRenderTargetView);
+	pBackBuffer->Release ();
+
+	This->GetDesc (&sd);
+	HWND windowHandle = sd.OutputWindow;
+
+	RECT windowRect;
+	GetWindowRect (windowHandle, &windowRect);
+	f32 width   = windowRect.right - windowRect.left;
+	f32 height  = windowRect.bottom - windowRect.top;
+	imguiWidth  = width / 2.5;
+	imguiHeight = font_size * 5;
+	imguiPosX   = width / 2;
+	imguiPosY   = height / 1.25;
+	resChanged  = true;
+
 	return res;
 }
 
 VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
-	static f32 imguiWidth;
-	static f32 imguiHeight;
-	static f32 imguiPosX;
-	static f32 imguiPosY;
-
 	static bool inited = false;
 	if (!inited) {
 		DXGI_SWAP_CHAIN_DESC sd;
@@ -119,7 +165,7 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 		HWND windowHandle = sd.OutputWindow;
 		originalWndProc   = (WNDPROC)SetWindowLongPtrA (windowHandle, GWLP_WNDPROC, (i64)WndProc);
 
-		f32 font_size = 17.0;
+		font_size = 17.0;
 		try {
 			auto config = toml::parse ("Mods/Plugins/subtitles.toml");
 			font_size   = toml::find_or<f32> (config, "font_size", 17.0);
@@ -148,8 +194,8 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 	ImGui_ImplWin32_NewFrame ();
 	ImGui::NewFrame ();
 
-	ImGui::SetNextWindowSize (ImVec2 (imguiWidth, imguiHeight), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowPos (ImVec2 (imguiPosX, imguiPosY), ImGuiCond_FirstUseEver, ImVec2 (0.5, 0.5));
+	ImGui::SetNextWindowSize (ImVec2 (imguiWidth, imguiHeight), resChanged ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos (ImVec2 (imguiPosX, imguiPosY), resChanged ? ImGuiCond_Always : ImGuiCond_FirstUseEver, ImVec2 (0.5, 0.5));
 	ImGui::SetNextWindowBgAlpha (0.7);
 	if (ImGui::Begin ("Subtitles", 0, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse)) {
 		ImGui::PushTextWrapPos (0.0);
@@ -179,6 +225,7 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 	ImGui::Render ();
 	pContext->OMSetRenderTargets (1, &mainRenderTargetView, 0);
 	ImGui_ImplDX11_RenderDrawData (ImGui::GetDrawData ());
+	resChanged = false;
 
 	return originalIDXGISwapChainPresent (This, sync, flags);
 }
@@ -190,6 +237,7 @@ VTABLE_HOOK (i32, __stdcall, IDXGIFactory2, CreateSwapChain, IUnknown *pDevice, 
 	if (ppSwapChain && *ppSwapChain) {
 		INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, Present, 8);
 		INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, ResizeBuffers, 13);
+		INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, ResizeTarget, 14);
 	}
 
 	return result;
