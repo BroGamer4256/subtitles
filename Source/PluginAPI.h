@@ -18,9 +18,9 @@ union PluginVersion {
 static_assert (sizeof (PluginVersion) == 8, "PluginVersion union has unexpected size");
 
 // Helper macro to fill out the PluginVersion field
-#define PLUG_VER(a, b, c, d)                                                                                                                         \
-	{                                                                                                                                                \
-		{ d, c, b, a }                                                                                                                               \
+#define PLUG_VER(a, b, c, d) \
+	{                        \
+		{ d, c, b, a }       \
 	}
 
 typedef struct {

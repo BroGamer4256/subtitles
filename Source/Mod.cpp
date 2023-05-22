@@ -7,7 +7,6 @@
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
-#include <thread>
 #include <vector>
 
 typedef struct string {
@@ -43,6 +42,7 @@ typedef struct showing_subtitle {
 	subtitle_state state;
 	f32 opacity;
 	subtitle subtitle;
+	std::chrono::time_point<std::chrono::high_resolution_clock> end_time;
 } showing_subtitle;
 
 std::vector<showing_subtitle> showing_subtitles;
@@ -53,19 +53,10 @@ operator== (showing_subtitle lhs, subtitle const rhs) {
 }
 
 void
-wait_remove_sub (subtitle sub) {
-	std::this_thread::sleep_for (std::chrono::milliseconds (sub.duration));
-	auto it = std::find (showing_subtitles.begin (), showing_subtitles.end (), sub);
-	if (it != showing_subtitles.end ()) it->state = fade_out;
-}
-
-void
 show_subtitle (string *name) {
 	subtitle sub = get_subtitle (getStringInternal (name));
-	if (!strcmp (sub.subtitle, "")) { return; }
-	showing_subtitles.push_back (showing_subtitle{ fade_in, 0.0, sub });
-	std::thread thread (wait_remove_sub, sub);
-	thread.detach ();
+	if (!strcmp (sub.subtitle, "")) return;
+	showing_subtitles.push_back (showing_subtitle{fade_in, 0.0, sub, std::chrono::high_resolution_clock::now () + std::chrono::milliseconds (sub.duration)});
 }
 
 extern LRESULT ImGui_ImplWin32_WndProcHandler (HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -179,11 +170,12 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 	if (ImGui::Begin ("Subtitles", 0, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse)) {
 		ImGui::PushTextWrapPos (0.0);
 		for (auto &sub : showing_subtitles) {
+			if (sub.end_time <= std::chrono::high_resolution_clock::now ()) sub.state = fade_out;
 			switch (sub.state) {
 			case fade_in:
 				ImGui::TextColored (ImVec4 (1.0, 1.0, 1.0, sub.opacity), "%s\n", sub.subtitle.subtitle);
 				sub.opacity += 0.1;
-				if (sub.opacity >= 1.0) { sub.state = show; }
+				if (sub.opacity >= 1.0) sub.state = show;
 				break;
 			case show: ImGui::TextWrapped ("%s\n", sub.subtitle.subtitle); break;
 			case fade_out:
@@ -222,11 +214,9 @@ VTABLE_HOOK (i32, __stdcall, IDXGIFactory2, CreateSwapChain, IUnknown *pDevice, 
 	return result;
 }
 
-HOOK (i32, __stdcall, D3D11CreateDevice, PROC_ADDRESS ("d3d11.dll", "D3D11CreateDevice"), IDXGIAdapter *pAdapter, D3D_DRIVER_TYPE DriverType,
-      HMODULE Software, UINT Flags, const D3D_FEATURE_LEVEL *pFeatureLevels, UINT FeatureLevels, UINT SDKVersion, ID3D11Device **ppDevice,
-      D3D_FEATURE_LEVEL *pFeatureLevel, ID3D11DeviceContext **ppImmediateContext) {
-	i32 result = originalD3D11CreateDevice (pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, ppDevice, pFeatureLevel,
-	                                        ppImmediateContext);
+HOOK (i32, __stdcall, D3D11CreateDevice, PROC_ADDRESS ("d3d11.dll", "D3D11CreateDevice"), IDXGIAdapter *pAdapter, D3D_DRIVER_TYPE DriverType, HMODULE Software, UINT Flags,
+      const D3D_FEATURE_LEVEL *pFeatureLevels, UINT FeatureLevels, UINT SDKVersion, ID3D11Device **ppDevice, D3D_FEATURE_LEVEL *pFeatureLevel, ID3D11DeviceContext **ppImmediateContext) {
+	i32 result = originalD3D11CreateDevice (pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, ppDevice, pFeatureLevel, ppImmediateContext);
 	if (FAILED (result)) return result;
 
 	ID3D11Device *pDevice = *ppDevice;

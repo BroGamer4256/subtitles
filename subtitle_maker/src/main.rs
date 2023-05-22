@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
-const BATCH_PATH: &'static str = "/G/SteamLibrary/steamapps/common/EARTH DEFENSE FORCE 5/SOUND/PC/TIKYUU5_VOICE_LIST.EN/batch 72";
+const BATCH_PATH: &'static str = "/G/SteamLibrary/steamapps/common/EARTH DEFENSE FORCE 5/SOUND/PC/TIKYUU5_VOICE_LIST.EN/batch 82";
 const WHISPER_MODEL: &'static str = "small.en";
 const WHISPER_LANGUAGE: &'static str = "en";
 
@@ -139,9 +139,15 @@ fn generate_subtitle_ai(files: &mut Vec<File>) {
 	for file in files {
 		let path = format!(
 			"tmp/{}.txt",
-			file.path.file_name().unwrap().to_string_lossy()
+			file.path
+				.file_name()
+				.unwrap()
+				.to_string_lossy()
+				.strip_suffix(".wav")
+				.unwrap()
 		);
-		let Ok(initial_subtitle) = std::fs::read_to_string(path) else {
+		let Ok(initial_subtitle) = std::fs::read_to_string(&path) else {
+			println!("Failed to open {}", path);
 			continue;
 		};
 		file.initial_subtitle = Some(

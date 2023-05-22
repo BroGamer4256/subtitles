@@ -7,7 +7,7 @@ OBJ = $(addprefix $(TARGET)/,$(SRC:.cpp=.o))
 INCLUDE = -ISource -IDependencies/Detours/src -IDependencies/imgui -IDependencies/imgui/backends -IDependencies/toml11
 DEFINES = -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x501
 CXXFLAGS = -Wall -Wextra -Ofast
-LDFLAGS = -shared -static -s -pthread -lpsapi -lgdi32 -ldwmapi -ld3dcompiler -lkernel32 -ladvapi32 -luserenv -lkernel32 -lkernel32 -lws2_32 -lbcrypt
+LDFLAGS = -shared -static -s -pthread -lpsapi -lgdi32 -ldwmapi -ld3dcompiler -ladvapi32 -luserenv -lkernel32 -lws2_32 -lbcrypt -lntdll
 HASHMAP_LIB = hashmap/target/$(TARGET)/release/libhashmap.a
 
 all: options $(OUT)
@@ -35,7 +35,7 @@ $(HASHMAP_LIB): subtitle_maker/subtitles.csv
 .PHONY: $(OUT)
 $(OUT): dirs $(OBJ) $(HASHMAP_LIB)
 	@echo "LINK	$@"
-	@$(CXX) $(CXXFLAGS) $(DEFINES) $(INCLUDE) -o $(TARGET)/$@.dll $(OBJ) $(LDFLAGS) $(HASHMAP_LIB)
+	@$(CXX) $(CXXFLAGS) $(DEFINES) $(INCLUDE) -o $(TARGET)/$@.dll $(OBJ) $(HASHMAP_LIB) $(LDFLAGS)
 
 .PHONY: dist
 dist: $(OUT)
