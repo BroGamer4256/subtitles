@@ -33,11 +33,9 @@ typedef double f64;
 
 #define ASSERT_SIZEOF(type, size) static_assert (sizeof (type) == size, "sizeof assertion failed")
 
-#ifdef BASE_ADDRESS
+#define BASE_ADDRESS 0x140000000
 const HMODULE MODULE_HANDLE = GetModuleHandle (nullptr);
-
 #define ASLR(address) ((size_t)MODULE_HANDLE + (size_t)address - (size_t)BASE_ADDRESS)
-#endif
 
 #define FUNCTION_PTR(returnType, callingConvention, function, location, ...) returnType (callingConvention *function) (__VA_ARGS__) = (returnType (callingConvention *) (__VA_ARGS__)) (location)
 

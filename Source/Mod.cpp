@@ -42,7 +42,7 @@ typedef struct showing_subtitle {
 	subtitle_state state;
 	f32 opacity;
 	subtitle subtitle;
-	std::chrono::time_point<std::chrono::high_resolution_clock> end_time;
+	std::chrono::milliseconds passed;
 } showing_subtitle;
 
 std::vector<showing_subtitle> showing_subtitles;
@@ -56,7 +56,7 @@ void
 show_subtitle (string *name) {
 	subtitle sub = get_subtitle (getStringInternal (name));
 	if (!strcmp (sub.subtitle, "")) return;
-	showing_subtitles.push_back (showing_subtitle{fade_in, 0.0, sub, std::chrono::high_resolution_clock::now () + std::chrono::milliseconds (sub.duration)});
+	showing_subtitles.push_back (showing_subtitle{fade_in, 0.0, sub, std::chrono::milliseconds (0)});
 }
 
 extern LRESULT ImGui_ImplWin32_WndProcHandler (HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -77,6 +77,8 @@ f32 imguiHeight;
 f32 imguiPosX;
 f32 imguiPosY;
 bool resChanged = false;
+bool isPaused   = false;
+std::chrono::time_point<std::chrono::high_resolution_clock> last_frame;
 
 void
 resize (IDXGISwapChain *This) {
@@ -159,6 +161,8 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 
 		inited = true;
 	}
+	auto now    = std::chrono::high_resolution_clock::now ();
+	auto passed = std::chrono::duration_cast<std::chrono::milliseconds> (now - last_frame);
 
 	ImGui_ImplDX11_NewFrame ();
 	ImGui_ImplWin32_NewFrame ();
@@ -170,7 +174,8 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 	if (ImGui::Begin ("Subtitles", 0, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse)) {
 		ImGui::PushTextWrapPos (0.0);
 		for (auto &sub : showing_subtitles) {
-			if (sub.end_time <= std::chrono::high_resolution_clock::now ()) sub.state = fade_out;
+			if (!isPaused) sub.passed += passed;
+			if (sub.passed > std::chrono::milliseconds (sub.subtitle.duration)) sub.state = fade_out;
 			switch (sub.state) {
 			case fade_in:
 				ImGui::TextColored (ImVec4 (1.0, 1.0, 1.0, sub.opacity), "%s\n", sub.subtitle.subtitle);
@@ -197,6 +202,7 @@ VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 	pContext->OMSetRenderTargets (1, &mainRenderTargetView, 0);
 	ImGui_ImplDX11_RenderDrawData (ImGui::GetDrawData ());
 	resChanged = false;
+	last_frame = now;
 
 	return originalIDXGISwapChainPresent (This, sync, flags);
 }
@@ -231,21 +237,35 @@ HOOK (i32, __stdcall, D3D11CreateDevice, PROC_ADDRESS ("d3d11.dll", "D3D11Create
 	return result;
 }
 
-HOOK (void *, __fastcall, PlayVoice, 0x14047c9d0, void *a1, string *name, void *a3) {
+HOOK (void *, __fastcall, PlayVoice, ASLR (0x14047C9D0), void *a1, string *name, void *a3) {
 	show_subtitle (name);
 	return originalPlayVoice (a1, name, a3);
 }
 
-HOOK (void *, __fastcall, PlaySurroundVoice, 0x14047cba0, void *a1, string *name, void *a3, void *a4, i32 a5, u32 a6) {
+HOOK (void *, __fastcall, PlaySurroundVoice, ASLR (0x14047CBA0), void *a1, string *name, void *a3, void *a4, i32 a5, u32 a6) {
 	show_subtitle (name);
 	return originalPlaySurroundVoice (a1, name, a3, a4, a5, a6);
 }
 
+HOOK (void *, __fastcall, InitPauseMenu, ASLR (0x140585FC0), void *a1, void *a2) {
+	isPaused = true;
+	return originalInitPauseMenu (a1, a2);
+}
+
+HOOK (void *, __fastcall, KillPauseMenu, ASLR (0x1405869E0), void *a1, void *a2) {
+	isPaused = false;
+	return originalKillPauseMenu (a1, a2);
+}
+
 extern "C" {
 __declspec (dllexport) bool __fastcall EML5_Load (PluginInfo *info) {
+	last_frame = std::chrono::high_resolution_clock::now ();
+
 	INSTALL_HOOK (D3D11CreateDevice);
 	INSTALL_HOOK (PlayVoice);
 	INSTALL_HOOK (PlaySurroundVoice);
+	INSTALL_HOOK (InitPauseMenu);
+	INSTALL_HOOK (KillPauseMenu);
 
 	// debug stuff
 	// AllocConsole ();
