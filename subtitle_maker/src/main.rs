@@ -5,20 +5,14 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
-const BATCH_PATH: &'static str = "/G/SteamLibrary/steamapps/common/EARTH DEFENSE FORCE 5/SOUND/PC/TIKYUU5_VOICE_LIST.EN/batch 82";
-const WHISPER_MODEL: &'static str = "small.en";
+const BATCH_PATH: &'static str = "/path/to/batch";
+const WHISPER_MODEL: &'static str = "medium.en";
 const WHISPER_LANGUAGE: &'static str = "en";
 
 fn main() {
 	App::new()
-		.add_plugins(DefaultPlugins.set(WindowPlugin {
-			window: WindowDescriptor {
-				title: String::from("Subtitle maker"),
-				..default()
-			},
-			..default()
-		}))
-		.add_plugin(EguiPlugin)
+		.add_plugins(DefaultPlugins)
+		.add_plugins(EguiPlugin)
 		.insert_resource(Files {
 			files: vec![],
 			cur_file: None,
@@ -29,8 +23,8 @@ fn main() {
 			completed: -1,
 			total: 0,
 		})
-		.add_startup_system(load_files)
-		.add_system(ui)
+		.add_systems(Startup, load_files)
+		.add_systems(Update, ui)
 		.run();
 }
 
@@ -40,6 +34,7 @@ fn load_files(
 	asset_server: ResMut<AssetServer>,
 ) {
 	let mut files = vec![];
+
 	for file in std::fs::read_dir(BATCH_PATH).unwrap() {
 		let path = file.unwrap().path();
 		let handle = asset_server.load(path.clone());
@@ -54,6 +49,7 @@ fn load_files(
 			initial_subtitle: None,
 		});
 	}
+
 	generate_subtitle_ai(&mut files);
 	files.sort_by(|a, b| {
 		let a = a.path.file_name().unwrap();
@@ -101,7 +97,7 @@ struct DataCollection {
 
 fn generate_csv(data_collection: &Vec<Data>) {
 	let Some(data) = data_collection.last() else {
-		return
+		return;
 	};
 	let out = format!("{};{};{}\n", data.duration, data.name, data.subtitle);
 	let mut file = std::fs::File::options()
@@ -170,11 +166,11 @@ fn generate_subtitle_ai(files: &mut Vec<File>) {
 }
 
 fn ui(
-	mut ctx: ResMut<EguiContext>,
+	mut ctx: EguiContexts,
 	mut files: ResMut<Files>,
 	mut data_collection: ResMut<DataCollection>,
 	mut complete: ResMut<Complete>,
-	audio: Res<Audio>,
+	mut commands: Commands,
 ) {
 	egui::CentralPanel::default().show(ctx.ctx_mut(), |ui| {
 		if complete.complete {
@@ -190,10 +186,12 @@ fn ui(
 				return;
 			};
 
-			audio.play_with_settings(
-				cur_file.handle.clone(),
-				PlaybackSettings::ONCE.with_volume(0.5),
-			);
+			commands.spawn(AudioBundle {
+				source: cur_file.handle.clone(),
+				settings: PlaybackSettings::ONCE
+					.with_volume(bevy::audio::Volume::new_relative(0.5)),
+				..default()
+			});
 
 			let wav = hound::WavReader::open(cur_file.path.clone()).unwrap();
 			let duration = wav.duration() * 1000 / wav.spec().sample_rate;
@@ -208,10 +206,12 @@ fn ui(
 			});
 		}
 		if let Some(cur_file) = &files.cur_file && ui.button("Play audio again").clicked() {
-			audio.play_with_settings(
-				cur_file.handle.clone(),
-				PlaybackSettings::ONCE.with_volume(0.5),
-			);
+			commands.spawn(AudioBundle {
+				source: cur_file.handle.clone(),
+				settings: PlaybackSettings::ONCE
+					.with_volume(bevy::audio::Volume::new_relative(0.5)),
+				..default()
+			});
 		}
 		if let Some(data) = data_collection.data.last_mut() {
 			ui.label(format!("Duration: {}ms", data.duration));

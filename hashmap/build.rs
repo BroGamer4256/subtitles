@@ -13,7 +13,7 @@ fn main() {
 		map.entry(
 			parts[1],
 			&format!(
-				"Subtitle {{ duration: {}, subtitle: c_str!(\"{}\"), name: c_str!(\"{}\") }}",
+				"Subtitle {{ duration: {}, subtitle: c_str!(r#\"{}\"#), name: c_str!(\"{}\") }}",
 				parts[0], parts[2], parts[1]
 			),
 		);

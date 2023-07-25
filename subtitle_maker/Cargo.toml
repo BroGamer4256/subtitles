@@ -6,9 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.9.1", features = ["wav"] }
-bevy_egui = "0.17.1"
-chrono = "0.4.23"
+bevy = { version = "0.11.0", features = ["wav"] }
+bevy_egui = "0.21.0"
+chrono = "0.4.26"
 hound = "3.5.0"
 
 [profile.dev]
