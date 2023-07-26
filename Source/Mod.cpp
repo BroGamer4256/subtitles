@@ -113,12 +113,6 @@ VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeBuffers, u32 BufferCount,
 	return res;
 }
 
-VTABLE_HOOK (HRESULT, __stdcall, IDXGISwapChain, ResizeTarget, void *params) {
-	HRESULT res = originalIDXGISwapChainResizeTarget (This, params);
-	resize (This);
-	return res;
-}
-
 VTABLE_HOOK (i32, __stdcall, IDXGISwapChain, Present, u32 sync, u32 flags) {
 	static bool inited = false;
 	if (!inited) {
@@ -214,7 +208,6 @@ VTABLE_HOOK (i32, __stdcall, IDXGIFactory2, CreateSwapChain, IUnknown *pDevice, 
 	if (ppSwapChain && *ppSwapChain) {
 		INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, Present, 8);
 		INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, ResizeBuffers, 13);
-		INSTALL_VTABLE_HOOK (IDXGISwapChain, *ppSwapChain, ResizeTarget, 14);
 	}
 
 	return result;
